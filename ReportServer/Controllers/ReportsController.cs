@@ -77,20 +77,25 @@ namespace ReportServer.Controllers
         Response.ClearHeaders();
 
         ExportFormatType streamFormat;
+        string contentType;
 
         switch (paramReport.FormatType)
         {
           case ReportType.Pdf:
             streamFormat = ExportFormatType.PortableDocFormat;
+            contentType = "application/pdf";
             break;
           case ReportType.Word:
             streamFormat = ExportFormatType.WordForWindows;
+            contentType = "application/msword";
             break;
           case ReportType.Excel:
             streamFormat = ExportFormatType.Excel;
+            contentType = "application/vnd.ms-excel";
             break;
           default:
             streamFormat = ExportFormatType.PortableDocFormat;
+            contentType = "application/pdf";
             break;
         }
 
@@ -98,7 +103,7 @@ namespace ReportServer.Controllers
 
         stream.Seek(0, SeekOrigin.Begin);
 
-        return new FileStreamResult(stream, "application/pdf");
+        return new FileStreamResult(stream, contentType);
       }
       catch (Exception ex)
       {
