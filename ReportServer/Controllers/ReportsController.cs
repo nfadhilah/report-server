@@ -70,8 +70,6 @@ namespace ReportServer.Controllers
           });
         }
 
-        rd.VerifyDatabase();
-
         Response.Buffer = false;
         Response.ClearContent();
         Response.ClearHeaders();
@@ -107,7 +105,7 @@ namespace ReportServer.Controllers
       }
       catch (Exception ex)
       {
-        return new HttpStatusCodeResult(HttpStatusCode.BadRequest, ex.Message);
+        return new HttpStatusCodeResult(HttpStatusCode.BadRequest, ex.InnerException?.Message ?? ex.Message);
       }
     }
   }
