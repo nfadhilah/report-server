@@ -7,9 +7,8 @@ using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Web.Mvc;
-using WebGrease.Css.Extensions;
-using Table = CrystalDecisions.CrystalReports.Engine.Table;
 
 namespace ReportServer.Controllers
 {
@@ -18,95 +17,110 @@ namespace ReportServer.Controllers
     private static readonly string ConStr = ConfigurationManager.ConnectionStrings["SirekasConnectionString"]
       .ConnectionString;
 
-    private static readonly SqlConnectionStringBuilder Builder = new SqlConnectionStringBuilder(ConStr);
+    private readonly SqlConnectionStringBuilder _builder = new SqlConnectionStringBuilder(ConStr);
 
     [HttpPost]
     public ActionResult GetReport(ParamReport paramReport)
     {
+
+      var fileName = GetFileExt(paramReport);
+
       try
       {
+
         if (!ModelState.IsValid) return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
 
-        var conInfo = new ConnectionInfo
-        {
-          ServerName = Builder.DataSource,
-          DatabaseName = Builder.InitialCatalog,
-          UserID = Builder.UserID,
-          Password = Builder.Password
-        };
+        var thread = new Thread(() => { ExportReport(paramReport, fileName); }) { IsBackground = true };
 
-        var rd = new ReportDocument();
+        thread.Start();
 
-        rd.Load(Path.Combine(Server.MapPath("~/Reports"), paramReport.ReportName));
+        var returnPath = $"Reports/tmp/{fileName}";
 
-        var crDatabase = rd.Database;
-        var crTables = crDatabase.Tables;
-        TableLogOnInfo logOnInfo;
-
-        foreach (Table crTable in crTables)
-        {
-          logOnInfo = crTable.LogOnInfo;
-          logOnInfo.ConnectionInfo = conInfo;
-          crTable.ApplyLogOnInfo(logOnInfo);
-        }
-
-        for (var i = 0; i < rd.Subreports.Count; i++)
-        {
-          foreach (Table crTbl in rd.Subreports[i].Database.Tables)
-          {
-            logOnInfo = crTbl.LogOnInfo;
-            logOnInfo.ConnectionInfo = conInfo;
-            crTbl.ApplyLogOnInfo(logOnInfo);
-          }
-
-          rd.Subreports[i].VerifyDatabase();
-        }
-
-        if (paramReport.Parameters.Any())
-        {
-          paramReport.Parameters.ForEach(p =>
-          {
-            rd.SetParameterValue(p.Key, p.Value);
-          });
-        }
-
-        Response.Buffer = false;
-        Response.ClearContent();
-        Response.ClearHeaders();
-
-        ExportFormatType streamFormat;
-        string contentType;
-
-        switch (paramReport.FormatType)
-        {
-          case ReportType.Pdf:
-            streamFormat = ExportFormatType.PortableDocFormat;
-            contentType = "application/pdf";
-            break;
-          case ReportType.Word:
-            streamFormat = ExportFormatType.WordForWindows;
-            contentType = "application/msword";
-            break;
-          case ReportType.Excel:
-            streamFormat = ExportFormatType.Excel;
-            contentType = "application/vnd.ms-excel";
-            break;
-          default:
-            streamFormat = ExportFormatType.PortableDocFormat;
-            contentType = "application/pdf";
-            break;
-        }
-
-        var stream = rd.ExportToStream(streamFormat);
-
-        stream.Seek(0, SeekOrigin.Begin);
-
-        return new FileStreamResult(stream, contentType);
+        return new ContentResult { Content = $"<a href=\"${returnPath}\">File</a>" };
       }
       catch (Exception ex)
       {
         return new HttpStatusCodeResult(HttpStatusCode.BadRequest, ex.InnerException?.Message ?? ex.Message);
       }
+    }
+
+    private void ExportReport(ParamReport paramReport, string fileName)
+    {
+      var conInfo = new ConnectionInfo
+      {
+        ServerName = _builder.DataSource,
+        DatabaseName = _builder.InitialCatalog,
+        UserID = _builder.UserID,
+        Password = _builder.Password
+      };
+
+      using (var rd = new ReportDocument())
+      {
+        rd.Load(Path.Combine(Server.MapPath("~/Reports"), paramReport.ReportName));
+
+        rd.DataSourceConnections[0]
+          .SetConnection(conInfo.ServerName, conInfo.DatabaseName, conInfo.UserID, conInfo.Password);
+
+        if (paramReport.Parameters.Any())
+        {
+          foreach (var param in paramReport.Parameters)
+          {
+            rd.SetParameterValue(param.Key, param.Value);
+          }
+        }
+
+        var formatType = GetExportFormatType(paramReport);
+
+        var path = Path.Combine(Server.MapPath("~/Reports/tmp"), GetFileExt(paramReport));
+
+        rd.ExportToDisk(formatType, path);
+      }
+    }
+
+    private static ExportFormatType GetExportFormatType(ParamReport paramReport)
+    {
+      ExportFormatType formatType;
+
+      switch (paramReport.FormatType)
+      {
+        case ReportType.Pdf:
+          formatType = ExportFormatType.PortableDocFormat;
+          break;
+        case ReportType.Word:
+          formatType = ExportFormatType.WordForWindows;
+          break;
+        case ReportType.Excel:
+          formatType = ExportFormatType.Excel;
+          break;
+        default:
+          formatType = ExportFormatType.PortableDocFormat;
+          break;
+      }
+
+      return formatType;
+    }
+
+    private static string GetFileExt(ParamReport paramReport)
+    {
+      var filename = Guid.NewGuid().ToString();
+
+      switch (paramReport.FormatType)
+      {
+        case ReportType.Pdf:
+          filename += ".pdf";
+          break;
+        case ReportType.Word:
+          filename += ".doc";
+          break;
+        case ReportType.Excel:
+          filename += ".xls";
+          break;
+        default:
+          filename += ".pdf";
+          break;
+      }
+
+      return filename;
     }
   }
 }
