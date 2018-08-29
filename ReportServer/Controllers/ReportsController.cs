@@ -7,7 +7,7 @@ using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Mvc;
 
 namespace ReportServer.Controllers
@@ -30,9 +30,7 @@ namespace ReportServer.Controllers
 
         if (!ModelState.IsValid) return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
 
-        var thread = new Thread(() => { ExportReport(paramReport, fileName); }) { IsBackground = true };
-
-        thread.Start();
+        Task.Factory.StartNew(() => { ExportReport(paramReport); });
 
         var returnPath = $"Reports/tmp/{fileName}";
 
@@ -44,7 +42,7 @@ namespace ReportServer.Controllers
       }
     }
 
-    private void ExportReport(ParamReport paramReport, string fileName)
+    private void ExportReport(ParamReport paramReport)
     {
       var conInfo = new ConnectionInfo
       {
